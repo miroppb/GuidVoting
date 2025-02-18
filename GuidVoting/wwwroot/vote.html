@@ -1,0 +1,107 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vote</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1 id="event-title" class="mt-4">Vote for Event</h1>
+        <div id="error-message" class="alert alert-danger d-none"></div>
+        <form id="vote-form" class="d-none">
+            <div id="questions-container" class="my-3"></div>
+            <button type="submit" class="btn btn-primary">Submit Vote</button>
+        </form>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            var currentUrl = new URL(window.location.href);
+
+            var pathSegments = currentUrl.pathname.split('/');
+            var eventId = pathSegments[2];
+            var guid = pathSegments[3];
+
+            console.log("Event ID:", eventId);
+            console.log("GUID:", guid);
+
+            var checkUrl = `/vote/check/${eventId}/${guid}`;
+
+            $.get(checkUrl, function (response) {
+                if (response.success) {
+                    $("#event-title").text(`Vote for ${response.eventName}`);
+                    $("#vote-form").removeClass("d-none");
+                    loadQuestions(eventId);
+                } else {
+                    $("#error-message").text(response.message).removeClass("d-none");
+                }
+            });
+
+            function loadQuestions(eventId) {
+                var questionsUrl = `/admin/events/${eventId}/questions`;
+
+                $.get(questionsUrl, function (questions) {
+                    console.log("Questions:", questions);
+
+                    questions.forEach(function (question) {
+                        var questionHtml = `<div class="card my-2">
+                                    <div class="card-body">
+                                        <h5 class="card-title">${question.text}</h5>
+                                        <div id="choices-${question.id}" class="btn-group btn-group-toggle" data-toggle="buttons">Loading choices...</div>
+                                    </div>
+                                </div>`;
+                        $("#questions-container").append(questionHtml);
+
+                        var choicesUrl = `/admin/questions/${question.id}/choices`;
+                        $.get(choicesUrl, function (choices) {
+                            console.log("Choices for question", question.id, ":", choices);
+                            var choicesHtml = choices.map(function (choice) {
+                                return `<label class="btn btn-primary">
+                                                <input type="radio" name="question-${question.id}" id="choice-${choice.id}" value="${choice.id}"> ${choice.choiceText}
+                                            </label>`;
+                            }).join('');
+                            $(`#choices-${question.id}`).html(choicesHtml);
+                        });
+                    });
+                });
+            }
+
+            $("#vote-form").submit(function (event) {
+                event.preventDefault();
+
+                var formData = $(this).serializeArray();
+                var voteData = [];
+
+                formData.forEach(function (item) {
+                    var questionId = item.name.split('-')[1];
+                    voteData.push({
+                        questionId: parseInt(questionId),
+                        choiceId: parseInt(item.value)
+                    });
+                });
+
+                var voteUrl = `/vote/${eventId}/${guid}`;
+
+                $.ajax({
+                    url: voteUrl,
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(voteData),
+                    success: function (response) {
+                        console.log("Vote response:", response);
+                        alert("Your vote has been submitted!");
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Vote error:", error);
+                        alert("Invalid GUID or already used");
+                    }
+                });
+            });
+        });
+    </script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,233 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Voting</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body class="container mt-4">
+    <h2 class="mb-4">Admin Panel - Manage Events & Questions</h2>
+
+    <h3>Create Event</h3>
+    <form id="eventForm" class="mb-4">
+        <div class="form-group">
+            <input type="text" id="eventInput" class="form-control" placeholder="Enter event name" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Create Event</button>
+        <div class="mt-2">This will be displayed as: Vote for <em>Event</em></div>
+    </form>
+
+    <h3>Events</h3>
+    <select id="eventSelect" class="form-control mb-4">
+        <option value="">Select an event</option>
+    </select>
+
+    <h3>Add Question</h3>
+    <form id="questionForm" class="mb-4">
+        <div class="form-group">
+            <input type="text" id="questionInput" class="form-control" placeholder="Enter a question" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Question</button>
+    </form>
+
+    <h3>Add Choices</h3>
+    <select id="questionSelect" class="form-control mb-2"></select>
+    <div class="input-group mb-4">
+        <input type="text" id="choiceInput" class="form-control" placeholder="Choice Text">
+        <div class="input-group-append">
+            <button id="addChoiceBtn" class="btn btn-primary">Add Choice</button>
+        </div>
+    </div>
+    <ul id="choicesList" class="list-group mb-4"></ul>
+
+    <table class="table table-bordered">
+        <thead class="thead-light">
+            <tr>
+                <th>ID</th>
+                <th>Question</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="questionList"></tbody>
+    </table>
+    <button id="generatePdf" class="btn btn-secondary">Generate PDF</button>
+
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script>
+        function fetchEvents() {
+            $.get("/admin/events", function (events) {
+                let options = '<option value="">Select an event</option>';
+                events.forEach(event => {
+                    options += `<option value="${event.id}">${event.name}</option>`;
+                });
+                $("#eventSelect").html(options);
+            });
+        }
+
+        function fetchQuestions(eventId) {
+            if (!eventId) return;
+            $.get(`/admin/events/${eventId}/questions`, function (questions) {
+                // Populate the questions table
+                let rows = "";
+                questions.forEach(q => {
+                    rows += `<tr><td>${q.id}</td><td>${q.text}</td>
+                                     <td><button onclick="deleteQuestion(${q.id}, ${eventId})">Delete</button></td></tr>`;
+                });
+                $("#questionList").html(rows);
+
+                // Populate the question dropdown for adding choices
+                let options = '<option value="">Select a question</option>';
+                questions.forEach(q => {
+                    options += `<option value="${q.id}">${q.text}</option>`;
+                });
+                $("#questionSelect").html(options);
+            });
+        }
+
+        function deleteQuestion(id, eventId) {
+            $.ajax({
+                url: `/admin/questions/${id}`,
+                type: 'DELETE',
+                success: function () { fetchQuestions(eventId); }
+            });
+        }
+
+        $("#eventForm").submit(function (e) {
+            e.preventDefault();
+            let name = $("#eventInput").val();
+
+            $.ajax({
+                url: "/admin/events",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ name }),
+                success: function () {
+                    $("#eventInput").val("");
+                    alert("Event created successfully!");
+                    fetchEvents();
+                },
+                error: function () {
+                    alert("Failed to create event. Check console.");
+                }
+            });
+        });
+
+        $("#eventSelect").change(function () {
+            fetchQuestions($(this).val());
+        });
+
+        $("#questionForm").submit(function (e) {
+            e.preventDefault();
+            let eventId = $("#eventSelect").val();
+            let text = $("#questionInput").val();
+
+            if (!eventId) {
+                alert("Please select an event.");
+                return;
+            }
+
+            $.ajax({
+                url: `/admin/events/${eventId}/questions`,
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ text }),
+                success: function () {
+                    $("#questionInput").val("");
+                    alert("Question added successfully!");
+                    fetchQuestions(eventId);
+                },
+                error: function () {
+                    alert("Failed to add question. Check console.");
+                }
+            });
+        });
+
+        function fetchQuestionsForChoices() {
+            $.get('/admin/questions', questions => {
+                $('#questionSelect').empty().append('<option value="">Select Question</option>');
+                questions.forEach(q => $('#questionSelect').append(`<option value="${q.id}">${q.text}</option>`));
+            });
+        }
+
+        $('#addChoiceBtn').click(() => {
+            const questionId = $('#questionSelect').val();
+            const choiceText = $('#choiceInput').val();
+            if (!questionId) return alert('Select a question first.');
+
+            $.ajax({
+                url: `/admin/questions/${questionId}/choices`,
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ choiceText }),
+                success: () => {
+                    alert('Choice added!');
+                    $('#choiceInput').val('');
+                    fetchChoices(questionId);
+                },
+                error: (xhr, status, error) => {
+                    alert(`Error: ${error}`);
+                }
+            });
+        });
+
+        function fetchChoices(questionId) {
+            if (!questionId) return;
+            $.get(`/admin/questions/${questionId}/choices`, function (choices) {
+                let choiceRows = "";
+                choices.forEach(c => {
+                    choiceRows += `
+                        <li>
+                            <input type="text" id="choiceText-${c.id}" value="${c.choiceText}" />
+                            <button onclick="updateChoice(${c.id})">Save</button>
+                        </li>
+                    `;
+                });
+                $("#choicesList").html(choiceRows);
+            });
+        }
+
+        $("#questionSelect").change(function () {
+            const questionId = $(this).val();
+            fetchChoices(questionId);
+        });
+
+        function updateChoice(choiceId) {
+            const updatedText = $(`#choiceText-${choiceId}`).val();
+            $.ajax({
+                url: `/admin/choices/${choiceId}`,
+                type: "PUT",
+                contentType: "application/json",
+                data: JSON.stringify({ choiceText: updatedText }),
+                success: function () {
+                    alert("Choice updated successfully!");
+                    const questionId = $("#questionSelect").val();
+                    fetchChoices(questionId);
+                },
+                error: function () {
+                    alert("Failed to update choice.");
+                }
+            });
+        }
+
+        fetchQuestionsForChoices();
+
+        $("#generatePdf").click(function () {
+            let eventId = $("#eventSelect").val();
+            if (!eventId) {
+                alert("Please select an event first.");
+                return;
+            }
+            const count = prompt('Enter the number of pages to generate (1 page will have 2 pamphlets):');
+            if (count && !isNaN(count) && count > 0) {
+                window.open(`/admin/events/${eventId}/generate-pdf?count=${count}`, '_blank');
+            } else {
+                alert('Please enter a valid number.');
+            }
+        });
+
+        fetchEvents();
+    </script>
+</body>
+</html>
